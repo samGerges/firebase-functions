@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "ar-soccer-manager"
-  }
+    "default": "ar-soccer-manager-5cab3"
+  },
+  "targets": {},
+  "etags": {}
 }
