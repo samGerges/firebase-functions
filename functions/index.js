@@ -19,8 +19,6 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     const homeFormation = request.body.homeTeam.formation ? request.body.homeTeam.formation : [4, 3, 3]
     const awayFormation = request.body.awayTeam.formation ? request.body.awayTeam.formation : [4, 3, 3]
 
-    console.log(homeTeamName, awayTeamName);
-
     let snapshotHomeGK = await db.collection("players").where('club', '==', homeTeamName).where('bestPosition', '==', 'GK').orderBy('overall', 'desc').limit(1).get()
     let snapshotHomeDefence = await db.collection("players").where('club', '==', homeTeamName).where('bestPosition', 'in', defencePositions).orderBy('overall', 'desc').limit(homeFormation[0]).get()
     let snapshotHomeMid = await db.collection("players").where('club', '==', homeTeamName).where('bestPosition', 'in', midfielderPosition).orderBy('overall', 'desc').limit(homeFormation[1]).get()
@@ -38,10 +36,8 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     
     let homeTeamAttacking = 0
 
-    console.log("Home Attack");
     snapshotHomeAttack.forEach(player => {
         player = player.data()
-        console.log(player.name);
         rate = (player.finishing + player.curve + player.ballControl + player.shotPower + player.vision 
             + player.dribbling + player.longShots)/7
         homeTeamAttacking += isNaN(rate) ? Math.random()* (100 - 60) + 60 : rate
@@ -49,17 +45,13 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     homeTeamAttacking = (homeTeamAttacking/snapshotHomeAttack.size)/100
 
     let awayTeamAttacking = 0
-    console.log("Away Attack");
     snapshotAwayAttack.forEach(player => {
         player = player.data()
-        console.log(player.name);
         rate = (player.finishing + player.curve + player.ballControl + player.shotPower + player.vision 
             + player.dribbling + player.longShots)/7
         awayTeamAttacking += isNaN(rate) ? Math.random()* (100 - 60) + 60 : rate
     })
     awayTeamAttacking = (awayTeamAttacking/snapshotAwayAttack.size)/100
-
-    console.log("Attack", homeTeamAttacking, awayTeamAttacking)
 
     //it consists of stats from midfielders players
     //positions: 'CM', 'CAM', 'CDM', 'LM', 'RM'
@@ -69,10 +61,8 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
 
     let homeTeamMid = 0
 
-    console.log("Home Mid");
     snapshotHomeMid.forEach(player => {
         player = player.data()
-        console.log(player.name);
         rate = (player.ballControl + player.shortPassing + player.volleys + player.dribbling + player.sprintSpeed
             + player.agility + player.crossing + player.balance + player.vision
             + player.strength + player.aggression + player.longPassing + player.acceleration)/13
@@ -81,10 +71,8 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     homeTeamMid = (homeTeamMid/snapshotHomeMid.size)/100
 
     let awayTeamMid = 0
-    console.log("Away Mid");
     snapshotAwayMid.forEach(player => {
         player = player.data()
-        console.log(player.name);
         rate = (player.ballControl + player.shortPassing + player.volleys + player.dribbling + player.sprintSpeed
             + player.agility + player.crossing + player.balance + player.vision
             + player.strength + player.aggression + player.longPassing + player.acceleration)/13
@@ -92,17 +80,13 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     })
     awayTeamMid = (awayTeamMid/snapshotAwayMid.size)/100
 
-    console.log("Mid", homeTeamMid, awayTeamMid)
-
     //it consists of stats from defender players
     //positions: 'CB', 'LB', 'RB', 'LWB', 'RWB'
     //skills: Ball Control, Agility, Reactions, Balance, Strength, Aggression, Interception, Standing and Sliding Tackles
     //(Average of all 9 skill rates then divided by a 100 to get an number from 0 to 1 rating)
     let homeTeamDefence = 0
-    console.log("Home Defence");
     snapshotHomeDefence.forEach(player => {
         player = player.data()
-        console.log(player.name);
         rate = (player.agility + player.reactions + player.ballControl + player.balance + player.vision 
             + player.strength + player.aggression + player.interceptions + player.standingTackle + player.slidingTackle)/9
         homeTeamDefence += isNaN(rate) ? Math.random()* (100 - 40) + 40 : rate
@@ -110,17 +94,13 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     homeTeamDefence = (homeTeamDefence/snapshotHomeDefence.size)/100
 
     let awayTeamDefence = 0
-    console.log("Away Defence");
     snapshotAwayDefence.forEach(player => {
         player = player.data()
-        console.log(player.name);
         rate = (player.agility + player.reactions + player.ballControl + player.balance + player.vision 
             + player.strength + player.aggression + player.interceptions + player.standingTackle + player.slidingTackle)/9
         awayTeamDefence += isNaN(rate) ? Math.random()* (100 - 40) + 40 : rate
     })
     awayTeamDefence = (awayTeamDefence/snapshotAwayDefence.size)/100
-
-    console.log("Defence", homeTeamDefence, awayTeamDefence)
 
     //skills: GKPositioning, GK Reflexes, GKHandling, GKDiving
     //(Average of all 4 skill rates then divided by a 100 to get an number from 0 to 1 rating)
@@ -129,7 +109,6 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     
     snapshotHomeGK.forEach(player =>{
         player = player.data()
-        console.log(player.name)
         homeTeamGK += (player.GKPositioning + player.GKReflexes + player.GKHandling + player.GKDiving)/4
     })
     homeTeamGK = homeTeamGK/100
@@ -138,78 +117,110 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     
     snapshotAwayGK.forEach(player =>{
         player = player.data()
-        console.log(player.name)
         awayTeamGK += (player.GKPositioning + player.GKReflexes + player.GKHandling + player.GKDiving)/4
     })
     awayTeamGK = awayTeamGK/100
 
-    console.log("GK", homeTeamGK, awayTeamGK)
-
+    //prepare Variables for the simulation
     let homeTeamScore = 0
     let awayTeamScore = 0
 
     let teamInControl = "HOME"
 
-    let events = ["Kick Off!!"]
+    const eventTypes = {
+        HomeAttack: "HA",
+        AwayAttack: "AT",
+        HomeDefenceCut: "HDC",
+        AwayDefenceCut: "ADC",
+        HomeMidfieldCut: "HMC",
+        AwayMidfieldCut: "AMC",
+        HomeScores: "HS",
+        AwayScores: "AS",
+        HomeGKStop: "HGKS",
+        AwayGKStop: "AGKS",
+        HalfTime: "HT",
+        FullTime: "FT",
+        KickOff: "KF"
+      };
+
+    let events = [eventTypes.KickOff]
+    let shots = {home: 0, away:0}
+    let shotsOnTarget = {home:0, away:0}
+    let passes = {home:0, away: 0}
+    let passesAccuarcy = {home: 0, away:0}
+    let possession = {home:0, away:0}
 
     const iterations = 120
 
     for (let i = 0; i < iterations; i++) {
 
         if(i == Math.round(iterations/2)){
-            events.push("Half Time!!")
+            events.push(eventTypes.HalfTime)
             teamInControl = "AWAY"
             continue
         }
             
 
         if(teamInControl == 'HOME'){
-            let prob = Math.random()
 
+            possession.home += 1
+
+            let prob = Math.random()
             if(prob <= homeTeamAttacking){
+                passes.home += 1
+                
                 prob = Math.random()
-                events.push("Home team is attacking!")
+                events.push(eventTypes.HomeAttack)
                 if(prob <= awayTeamMid){
-                    events.push("It was cut by the away team Mid")
-                    teamInControl = "AWAY"
+                    events.push(eventTypes.AwayMidfieldCut)
                 }else{
+                    passes.home += 1
                     prob = Math.random()
                     if(prob <= awayTeamDefence){
-                        events.push("It was cut by the away team Defence")
-                        teamInControl = "AWAY"
+                        events.push(eventTypes.AwayDefenceCut)
                     }else{
+                        shots.home += 1
+                        shotsOnTarget.home += 1
+
                         if(prob > awayTeamGK){
-                            events.push("Home team Scoressss!")
+                            events.push(eventTypes.HomeScores)
                             homeTeamScore++ 
-                            teamInControl = "AWAY"
                         }else{
-                            events.push("Goal Keeper stops the shot")
-                            teamInControl = "AWAY"
+                            let prob = Math.random()
+                            if(prob >= 50){
+                                shotsOnTarget.home += 1
+                                events.push(eventTypes.AwayGKStop)
+                            }
                         }
+                        
                     }   
+                    teamInControl = "AWAY"
                 }
             }
         }else{
-            let prob = Math.random()
+            possession.away += 1
 
+            let prob = Math.random()
             if(prob <= awayTeamAttacking){
+                possession.away += 1
+
                 prob = Math.random()
-                events.push("Away team is attacking!")
+                events.push(eventTypes.AwayAttack)
                 if(prob <= homeTeamMid){
-                    events.push("It was cut by the home team Mid")
+                    events.push(eventTypes.HomeMidfieldCut)
                     teamInControl = "HOME"
                 }else{
                     prob = Math.random()
                     if(prob <= homeTeamDefence){
-                        events.push("It was cut by the home team Defence")
+                        events.push(eventTypes.HomeDefenceCut)
                         teamInControl = "HOME"
                     }else{
                         if(prob > homeTeamGK){
-                            events.push("Away team Scoressss!")
+                            events.push(eventTypes.AwayScores)
                             awayTeamScore++ 
                             teamInControl = "HOME"
                         }else{
-                            events.push("Goal Keeper stops the shot")
+                            events.push(eventTypes.HomeGKStop)
                             teamInControl = "HOME"
                         }
                     }
@@ -219,8 +230,8 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
         
     }
 
-    events.push("End of Match")
-    
+    events.push(eventTypes.FullTime)
+
     response.send({
         homeScore: homeTeamScore,
         awayScore: awayTeamScore,
