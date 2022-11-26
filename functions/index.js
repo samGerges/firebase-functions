@@ -15,7 +15,7 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     const homeFormation = request.body.homeTeam.formation
     const awayFormation = request.body.awayTeam.formation
 
-    const userId = request.body.userId || "76CpTVFPpDMM91xEzattqg5Em7L1"
+    const userId = request.body.userId 
     const leagueName = request.body.leagueName || "Premier League"
 
 
@@ -42,8 +42,8 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
     let gameResult = {
         homeTeamName: homeTeamName,
         awayTeamName: awayTeamName,
-        homeScore: 3,
-        awayScore: 1,
+        homeScore: gameScore.home,
+        awayScore: gameScore.away,
         stats:{
             gameShots,
             gamePasses,
@@ -495,7 +495,7 @@ class GameClass{
 
         this.events.push({code: this.eventTypes.FullTime, time: 90, player: ""})
 
-        return this.events
+        return demoEvents
     }
 }
 
