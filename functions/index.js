@@ -31,25 +31,25 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
 
     possessionTotal = gamePossession.home + gamePossession.away
 
-    await updateLeagueStanding(userId, leagueName, {homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
+    await updateLeagueStanding(userId, {homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
 
     let fixtureResult = await simulateTournmentFixture(userId, leagueName, [homeTeamName, awayTeamName])
 
     fixtureResult.push({homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
 
-    await updateLeagueFixture(userId, leagueName, fixtureResult)
+    await updateLeagueFixture(userId, fixtureResult)
 
     let gameResult = {
         homeTeamName: homeTeamName,
         awayTeamName: awayTeamName,
-        homeScore: gameScore.home,
-        awayScore: gameScore.away,
+        homeScore: 3,
+        awayScore: 1,
         stats:{
             gameShots,
             gamePasses,
             possession:{
-                home: (gamePossession.home / possessionTotal)*100,
-                away: (gamePossession.away / possessionTotal)*100
+                home: 55,
+                away: 45
             }
         },
         events: eventsClass
@@ -95,7 +95,7 @@ async function simulateTournmentFixture(userId, leagueName, excluded) {
 
         let gameResult = {homeTeam:firstHalf[i], awayTeam:secondHalf[i], score: gameSim.getScore()}
 
-        await updateLeagueStanding(userId, leagueName, gameResult)
+        await updateLeagueStanding(userId, gameResult)
         
         results.push(gameResult)
 
@@ -113,14 +113,10 @@ async function storeGameHistory(userId, data){
 
 }
 
-async function updateLeagueStanding(userId, leagueName, game)  {
+async function updateLeagueStanding(userId, game)  {
 
     
-    if(leagueName == "Premier League") leagueName = 'pr'
-    else if (leagueName == "Ligue 1") leagueName = 'lig'
-    else if (leagueName == "La Liga") leagueName = 'lalig'
-    else if (leagueName == "Bundesliga") leagueName = 'bund'
-    // else if(leagueName == "Premier League") leagueName = 'pr'
+    let leagueName = 'pr'
 
     let docRef = db.collection("users").doc(userId)
 
@@ -163,8 +159,8 @@ async function updateLeagueStanding(userId, leagueName, game)  {
         secTeamIndex = league.length -1
     } 
 
-    frTeam = await updateTeamStanding(league[frTeamIndex], homeResult)    
-    secTeam = await updateTeamStanding(league[secTeamIndex], awayResult)
+    frTeam = await updateTeamPoints(league[frTeamIndex], homeResult)    
+    secTeam = await updateTeamPoints(league[secTeamIndex], awayResult)
 
     let updateObj = {}
 
@@ -178,7 +174,7 @@ async function updateLeagueStanding(userId, leagueName, game)  {
     )
 }
 
-async function updateTeamStanding(team, result){
+async function updateTeamPoints(team, result){
 
     team.played += 1
     
@@ -199,12 +195,9 @@ async function updateTeamStanding(team, result){
     
 }
 
-async function updateLeagueFixture(userId, leagueName, results){
+async function updateLeagueFixture(userId, results){
 
-    if(leagueName == "Premier League") leagueName = 'pr'
-    else if (leagueName == "Ligue 1") leagueName = 'lig'
-    else if (leagueName == "La Liga") leagueName = 'lalig'
-    else if (leagueName == "Bundesliga") leagueName = 'bund'
+    let leagueName = 'pr'
 
     let docRef = db.collection("users").doc(userId)
 
@@ -364,14 +357,18 @@ class GameClass{
         const homeTeam = await this.prepareTeam(home, homeForm)
         const awayTeam = await this.prepareTeam(away, awayForm)
 
-        this.events.push(this.eventTypes.KickOff)
+        
+        this.events.push({code: this.eventTypes.KickOff, time: 1, player: ""})
 
         const iterations = 90
 
         for (let i = 1; i <= iterations; i++) {
+
+            
     
-            if(i == Math.round(iterations/2)){
-                this.events.push(this.eventTypes.HalfTime)
+            if(i == 45){
+                let event = {code: this.eventTypes.HalfTime, time: i, player: ""}
+                this.events.push(event)
                 teamInControl = "AWAY"
                 continue
             }
@@ -385,16 +382,20 @@ class GameClass{
                     this.passes.home += 2
                     
                     prob = Math.random()
-                    this.events.push(this.eventTypes.HomeAttack)
+
+                    let event = {code: this.eventTypes.HomeAttack, time: i, player: ""}
+                    this.events.push(event)
                     if(prob <= (awayTeam.teamMidfield - 0.05)){
                         //Away Team' Midfield cuts the ball
-                        this.events.push(this.eventTypes.AwayMidfieldCut)
+                        let event = {code: this.eventTypes.AwayMidfieldCut, time: i, player: ""}
+                        this.events.push(event)
                     }else{
                         this.passes.home += 2
                         prob = Math.random()+0.15
                         if(prob <= (awayTeam.teamDefence - 0.05)){
                             //Away Team's defence cuts the ball
-                            this.events.push(this.eventTypes.AwayDefenceCut)
+                            let event = {code: this.eventTypes.AwayDefenceCut, time: i, player: ""}
+                            this.events.push(event)
                         }else{
                             this.passes.home += 2
                             this.shots.home += 1
@@ -402,11 +403,13 @@ class GameClass{
                             if(prob > (awayTeam.teamGK - 0.15)){
                                 //Home Team Scores
                                 let playerScored = this.pickPlayer(homeTeam.attackPlayers)
-                                this.events.push(this.eventTypes.HomeScores)
+                                let event = {code: this.eventTypes.HomeScores, time: i, player: playerScored}
+                                this.events.push(event)
                                 this.score.home += 1 
                             }else{
                                 //Away Team's Goalkeeper Stops the ball
-                                this.events.push(this.eventTypes.AwayGKStop)
+                                let event = {code: this.eventTypes.AwayGKStop, time: i, player: ""}
+                                this.events.push(event)
                             }
                             teamInControl = "AWAY"
                             
@@ -424,16 +427,19 @@ class GameClass{
                     this.passes.away += 2
                     //Away Team is attacking
                     prob = Math.random()
-                    this.events.push(this.eventTypes.AwayAttack)
+                    let event = {code: this.eventTypes.AwayAttack, time: i, player: ""}
+                    this.events.push(event)
                     if(prob <= (homeTeam.teamMidfield - 0.02)){
                         //Home Team' Midfield cuts the ball
-                        this.events.push(this.eventTypes.HomeMidfieldCut)
+                        let event = {code: this.eventTypes.HomeMidfieldCut, time: i, player: ""}
+                        this.events.push(event)
                     }else{
                         this.passes.away += 2
                         prob = Math.random()
                         if(prob <= (homeTeam.teamDefence - 0.05)){
-                              //Home Team's defence cuts the ball
-                            this.events.push(this.eventTypes.HomeDefenceCut)
+                            //Home Team's defence cuts the ball
+                            let event = {code: this.eventTypes.HomeDefenceCut, time: i, player: ""}
+                            this.events.push(event)
                         }else{
                             this.passes.away += 2
                             this.shots.away += 1
@@ -441,11 +447,13 @@ class GameClass{
                             if(prob > homeTeam.teamGK){
                                   //Away Team scoress
                                 let playerScored = this.pickPlayer(awayTeam.attackPlayers)
-                                this.events.push(this.eventTypes.AwayScores)
+                                let event = {code: this.eventTypes.AwayScores, time: i, player: playerScored}
+                                this.events.push(event)
                                 this.score.away += 1 
                             }else{
                                 //Home Team's Goalkeeper stops the ball
-                                this.events.push(this.eventTypes.HomeGKStop)
+                                let event = {code: this.eventTypes.HomeGKStop, time: i, player: ""}
+                                this.events.push(event)
                             }
                             teamInControl = "HOME"   
                         }
@@ -457,8 +465,35 @@ class GameClass{
             }
             
         }
-    
-        this.events.push(this.eventTypes.FullTime)
+        
+        // let demoEvents = [
+        //     {code: this.eventTypes.KickOff, time: 1, player: ""},
+        //     {code: this.eventTypes.HomeAttack, time: 3, player: ""},
+        //     {code: this.eventTypes.AwayDefenceCut, time: 4, player: ""},
+        //     {code: this.eventTypes.AwayAttack, time: 5, player: ""},
+        //     {code: this.eventTypes.AwayScores, time: 5, player: this.pickPlayer(awayTeam.attackPlayers)},
+        //     {code: this.eventTypes.HomeAttack, time: 6, player: ""},
+        //     {code: this.eventTypes.AwayGKStop, time: 10, player: ""},
+        //     {code: this.eventTypes.AwayAttack, time: 11, player: ""},
+        //     {code: this.eventTypes.HomeDefenceCut, time: 14, player: ""},
+        //     {code: this.eventTypes.HomeAttack, time: 15, player: ""},
+        //     {code: this.eventTypes.HomeScores, time: 44, player: this.pickPlayer(homeTeam.attackPlayers)},
+        //     {code: this.eventTypes.HalfTime, time: 45, player: ""},
+        //     {code: this.eventTypes.AwayAttack, time: 54, player: ""},
+        //     {code: this.eventTypes.HomeMidfieldCut, time: 54, player: ""},
+        //     {code: this.eventTypes.AwayAttack, time: 56, player: ""},
+        //     {code: this.eventTypes.HomeGKStop, time: 60, player: ""},
+        //     {code: this.eventTypes.HomeAttack, time: 65, player: ""},
+        //     {code: this.eventTypes.HomeScores, time: 68, player: this.pickPlayer(homeTeam.attackPlayers)},
+        //     {code: this.eventTypes.AwayAttack, time: 70, player: ""},
+        //     {code: this.eventTypes.HomeGKStop, time: 75, player: ""},
+        //     {code: this.eventTypes.HomeAttack, time: 80, player: ""},
+        //     {code: this.eventTypes.HomeScores, time: 88, player: this.pickPlayer(homeTeam.attackPlayers)},
+        //     {code: this.eventTypes.FullTime, time: 90, player: ""}
+        // ]
+
+
+        this.events.push({code: this.eventTypes.FullTime, time: 90, player: ""})
 
         return this.events
     }
