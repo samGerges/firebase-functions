@@ -5,15 +5,18 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 
 const db = admin.firestore()
+const auth = admin.auth()
 
 exports.simulateGame = functions.https.onRequest(async (request, response) => {
-
 
     const homeTeamName = request.body.homeTeam.name
     const awayTeamName = request.body.awayTeam.name
 
     const homeFormation = request.body.homeTeam.formation
     const awayFormation = request.body.awayTeam.formation
+
+    const userId = request.body.userId || "76CpTVFPpDMM91xEzattqg5Em7L1"
+    const leagueName = request.body.leagueName || "Premier League"
 
 
     let gameSim = new GameClass([], {home: 0, away:0}, {home: 0, away:0}, {home: 0, away:0}, {home: 0, away:0})
@@ -28,7 +31,17 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
 
     possessionTotal = gamePossession.home + gamePossession.away
 
-    response.send({
+    await updateLeagueStanding(userId, leagueName, {homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
+
+    let fixtureResult = await simulateTournmentFixture(userId, leagueName, [homeTeamName, awayTeamName])
+
+    fixtureResult.push({homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
+
+    await updateLeagueFixture(userId, leagueName, fixtureResult)
+
+    let gameResult = {
+        homeTeamName: homeTeamName,
+        awayTeamName: awayTeamName,
         homeScore: gameScore.home,
         awayScore: gameScore.away,
         stats:{
@@ -40,14 +53,21 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
             }
         },
         events: eventsClass
-    });
+    }
+
+    await storeGameHistory(userId, gameResult)
+
+    response.send(gameResult);
 
 });
 
-exports.simulateTournmentFixture = functions.https.onRequest(async (request, response) => {
-    let league = request.body.leagueName
+async function simulateTournmentFixture(userId, leagueName, excluded) {
+    let league = leagueName
 
-    let leagueSnapshot = await db.collection("clubs").where('league', '==', league).get()
+    let leagueSnapshot = await db.collection("clubs")
+                                .where('league', '==', league)
+                                .where('name', 'not-in', excluded)
+                                .get()
 
     let leagueClubs = []
 
@@ -59,8 +79,6 @@ exports.simulateTournmentFixture = functions.https.onRequest(async (request, res
     //shuffle the league then split in half then randomly assign clubs from both arrays
     leagueClubs = leagueClubs.sort(function(){return 0.5 - Math.random()});
 
-    console.log(leagueClubs);
-
     //it should be perfect division as the total of teams is always even number
     const half = Math.ceil(leagueClubs.length / 2);
 
@@ -69,21 +87,157 @@ exports.simulateTournmentFixture = functions.https.onRequest(async (request, res
 
     let results = []
 
-
     for (let i = 0; i < half; i++){
 
         let gameSim = new GameClass([], {home: 0, away:0}, {home: 0, away:0}, {home: 0, away:0}, {home: 0, away:0})
 
-        let eventsClass = await gameSim.simulateGame(firstHalf[i], [4, 3, 3], secondHalf[i], [4, 3, 3])
+        await gameSim.simulateGame(firstHalf[i], [4, 3, 3], secondHalf[i], [4, 3, 3])
+
+        let gameResult = {homeTeam:firstHalf[i], awayTeam:secondHalf[i], score: gameSim.getScore()}
+
+        await updateLeagueStanding(userId, leagueName, gameResult)
         
-        results.push({homeTeam:firstHalf[i], awayTeam:secondHalf[i], score: gameSim.getScore()})
+        results.push(gameResult)
+
     }
 
-    response.send({
-        results
-    }) 
+    return results
 
-})
+}
+
+async function storeGameHistory(userId, data){
+
+    let docRef = db.collection("users").doc(userId).collection("history")
+
+    await docRef.add(data)
+
+}
+
+async function updateLeagueStanding(userId, leagueName, game)  {
+
+    
+    if(leagueName == "Premier League") leagueName = 'pr'
+    else if (leagueName == "Ligue 1") leagueName = 'lig'
+    else if (leagueName == "La Liga") leagueName = 'lalig'
+    else if (leagueName == "Bundesliga") leagueName = 'bund'
+    // else if(leagueName == "Premier League") leagueName = 'pr'
+
+    let docRef = db.collection("users").doc(userId)
+
+    let doc = await docRef.get()
+
+    let leagues = doc.data().leagues
+
+    let league = leagues[leagueName].standing
+
+    let frTeamName = game.homeTeam
+    let secTeamName = game.awayTeam
+    let score = game.score
+
+    let homeResult = "d"
+    let awayResult = "d"
+
+    if(score.home > score.away) {
+        homeResult = "w"
+        awayResult = "l"
+    }else if(score.away > score.home){
+        homeResult = "l"
+        awayResult = "w"
+    }
+
+    let frTeamIndex = league.findIndex(team => team.name == frTeamName)
+    let secTeamIndex = league.findIndex(team => team.name == secTeamName)
+
+    if(frTeamIndex == -1){
+        let team = createTeamObj(frTeamName)
+
+        league.push(team)
+
+        frTeamIndex = league.length -1
+    } 
+    if(secTeamIndex == -1){
+        let team = createTeamObj(secTeamName)
+
+        league.push(team)
+
+        secTeamIndex = league.length -1
+    } 
+
+    frTeam = await updateTeamStanding(league[frTeamIndex], homeResult)    
+    secTeam = await updateTeamStanding(league[secTeamIndex], awayResult)
+
+    let updateObj = {}
+
+    league[frTeamIndex] = frTeam
+    league[secTeamIndex] = secTeam
+
+    updateObj[`leagues.${leagueName}.standing`] = league
+
+    await docRef.update(
+        updateObj
+    )
+}
+
+async function updateTeamStanding(team, result){
+
+    team.played += 1
+    
+    if (result == "w"){
+        //team won match
+        team.won += 1
+    }else if(result == "l"){
+        //team lost match
+        team.loss += 1
+    }else if(result == "d"){
+        //team draw
+        team.draw += 1
+    }
+
+    team.points = team.won * 3 + team.draw * 1
+
+    return team
+    
+}
+
+async function updateLeagueFixture(userId, leagueName, results){
+
+    if(leagueName == "Premier League") leagueName = 'pr'
+    else if (leagueName == "Ligue 1") leagueName = 'lig'
+    else if (leagueName == "La Liga") leagueName = 'lalig'
+    else if (leagueName == "Bundesliga") leagueName = 'bund'
+
+    let docRef = db.collection("users").doc(userId)
+
+    let doc = await docRef.get()
+
+    let leagues = doc.data().leagues
+
+    let leagueFixture = leagues[leagueName].fixture
+
+    let newFixture = {results}
+
+    leagueFixture.push(newFixture)
+
+    let updateObj = {}
+    updateObj[`leagues.${leagueName}.fixture`] = leagueFixture
+
+    await docRef.update(
+        updateObj
+    )
+}
+
+function createTeamObj(teamName){
+    let obj = {
+        name: teamName,
+        played: 0,
+        points: 0,
+        won: 0,
+        loss: 0,
+        draw: 0
+    }
+
+    return obj
+}
 
 class GameClass{
 
@@ -212,10 +366,9 @@ class GameClass{
 
         this.events.push(this.eventTypes.KickOff)
 
-        const iterations = 1000
+        const iterations = 90
 
-        for (let i = 0; i < iterations; i++) {
-           
+        for (let i = 1; i <= iterations; i++) {
     
             if(i == Math.round(iterations/2)){
                 this.events.push(this.eventTypes.HalfTime)
@@ -227,26 +380,32 @@ class GameClass{
                 this.possession.home += 1
     
                 let prob = Math.random()
-                if(prob <= homeTeam.teamAttacking){
-                    this.passes.home += 1
+                if(prob <= (homeTeam.teamAttacking + 0.05)){
+                    //Home Team is attacking
+                    this.passes.home += 2
                     
                     prob = Math.random()
                     this.events.push(this.eventTypes.HomeAttack)
-                    if(prob <= awayTeam.teamMidfield){
+                    if(prob <= (awayTeam.teamMidfield - 0.05)){
+                        //Away Team' Midfield cuts the ball
                         this.events.push(this.eventTypes.AwayMidfieldCut)
                     }else{
-                        this.passes.home += 1
-                        prob = Math.random()
-                        if(prob <= awayTeam.teamDefence){
+                        this.passes.home += 2
+                        prob = Math.random()+0.15
+                        if(prob <= (awayTeam.teamDefence - 0.05)){
+                            //Away Team's defence cuts the ball
                             this.events.push(this.eventTypes.AwayDefenceCut)
                         }else{
+                            this.passes.home += 2
                             this.shots.home += 1
                             prob = Math.random()
-                            if(prob > awayTeam.teamGK){
+                            if(prob > (awayTeam.teamGK - 0.15)){
+                                //Home Team Scores
                                 let playerScored = this.pickPlayer(homeTeam.attackPlayers)
-                                this.events.push(this.eventTypes.HomeScores, playerScored)
+                                this.events.push(this.eventTypes.HomeScores)
                                 this.score.home += 1 
                             }else{
+                                //Away Team's Goalkeeper Stops the ball
                                 this.events.push(this.eventTypes.AwayGKStop)
                             }
                             teamInControl = "AWAY"
@@ -254,37 +413,46 @@ class GameClass{
                         }   
                         
                     }
+                }else{
+                    teamInControl = "AWAY"
                 }
             }else{
                 this.possession.away += 1
     
                 let prob = Math.random()
-                if(prob <= awayTeam.teamAttacking){
-                    this.passes.away += 1
-                    
+                if(prob <= (awayTeam.teamAttacking - 0.02)){
+                    this.passes.away += 2
+                    //Away Team is attacking
                     prob = Math.random()
                     this.events.push(this.eventTypes.AwayAttack)
-                    if(prob <= homeTeam.teamMidfield){
+                    if(prob <= (homeTeam.teamMidfield - 0.02)){
+                        //Home Team' Midfield cuts the ball
                         this.events.push(this.eventTypes.HomeMidfieldCut)
                     }else{
-                        this.passes.away += 1
+                        this.passes.away += 2
                         prob = Math.random()
-                        if(prob <= homeTeam.teamDefence){
+                        if(prob <= (homeTeam.teamDefence - 0.05)){
+                              //Home Team's defence cuts the ball
                             this.events.push(this.eventTypes.HomeDefenceCut)
                         }else{
+                            this.passes.away += 2
                             this.shots.away += 1
-                            prob = Math.random()
+                            prob = Math.random()+0.05
                             if(prob > homeTeam.teamGK){
+                                  //Away Team scoress
                                 let playerScored = this.pickPlayer(awayTeam.attackPlayers)
-                                this.events.push(this.eventTypes.AwayScores, playerScored)
+                                this.events.push(this.eventTypes.AwayScores)
                                 this.score.away += 1 
                             }else{
+                                //Home Team's Goalkeeper stops the ball
                                 this.events.push(this.eventTypes.HomeGKStop)
                             }
                             teamInControl = "HOME"   
                         }
                     }
                     
+                }else{
+                    teamInControl = "HOME"
                 }
             }
             
@@ -295,3 +463,30 @@ class GameClass{
         return this.events
     }
 }
+
+exports.userCreated = functions.auth.user().onCreate(async (user) =>{
+
+    const data = {
+        leagues: {
+            pr: {
+                fixture: [],
+                standing: []
+            },
+            lig: {
+                fixture: [],
+                standing: []
+            },
+            lalig: {
+                fixture: [],
+                standing: []
+            },
+            bund: {
+                fixture: [],
+                standing: []
+            },
+        }
+    }
+
+    await db.collection("users").doc(user.uid).set(data)
+
+})
