@@ -495,7 +495,7 @@ class GameClass{
 
         this.events.push({code: this.eventTypes.FullTime, time: 90, player: ""})
 
-        return demoEvents
+        return this.events
     }
 }
 
