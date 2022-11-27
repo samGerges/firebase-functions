@@ -278,7 +278,7 @@ class GameClass{
     }
 
     pickPlayer(players){
-        let random = Math.round(Math.random()*players.length)
+        let random = Math.round(Math.random()*(players.length-1))
         return players[random]
     }
 
