@@ -31,14 +31,16 @@ exports.simulateGame = functions.https.onRequest(async (request, response) => {
 
     possessionTotal = gamePossession.home + gamePossession.away
 
-    await updateLeagueStanding(userId, {homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
+    if(['Portugal', 'Argentina'].indexOf(homeTeamName) == -1){
 
-    let fixtureResult = await simulateTournmentFixture(userId, leagueName, [homeTeamName, awayTeamName])
+        await updateLeagueStanding(userId, leagueName, {homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
 
-    fixtureResult.push({homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
+        let fixtureResult = await simulateTournmentFixture(userId, leagueName, [homeTeamName, awayTeamName])
 
-    await updateLeagueFixture(userId, fixtureResult)
+        fixtureResult.push({homeTeam:homeTeamName, awayTeam:awayTeamName, score: gameSim.getScore()})
 
+        await updateLeagueFixture(userId, leagueName, fixtureResult)
+    }
     let gameResult = {
         homeTeamName: homeTeamName,
         awayTeamName: awayTeamName,
@@ -95,7 +97,7 @@ async function simulateTournmentFixture(userId, leagueName, excluded) {
 
         let gameResult = {homeTeam:firstHalf[i], awayTeam:secondHalf[i], score: gameSim.getScore()}
 
-        await updateLeagueStanding(userId, gameResult)
+        await updateLeagueStanding(userId, leagueName, gameResult)
         
         results.push(gameResult)
 
@@ -113,10 +115,13 @@ async function storeGameHistory(userId, data){
 
 }
 
-async function updateLeagueStanding(userId, game)  {
+async function updateLeagueStanding(userId, leagueName, game)  {
 
     
-    let leagueName = 'pr'
+    if (leagueName == "Premier League") leagueName = "pr"
+    else if(leagueName == "Ligue 1") leagueName = "lig"
+    else if(leagueName == "La Liga") leagueName = "lalig"
+    else if(leagueName == "Bundesliga") leagueName = "bund"
 
     let docRef = db.collection("users").doc(userId)
 
@@ -195,9 +200,12 @@ async function updateTeamPoints(team, result){
     
 }
 
-async function updateLeagueFixture(userId, results){
+async function updateLeagueFixture(userId, leagueName, results){
 
-    let leagueName = 'pr'
+    if (leagueName == "Premier League") leagueName = "pr"
+    else if(leagueName == "Ligue 1") leagueName = "lig"
+    else if(leagueName == "La Liga") leagueName = "lalig"
+    else if(leagueName == "Bundesliga") leagueName = "bund"
 
     let docRef = db.collection("users").doc(userId)
 
@@ -282,11 +290,12 @@ class GameClass{
         return players[random]
     }
 
-    async prepareTeam(teamName, formation = [4, 3, 3]){
-        let snapshotGK = await db.collection("players").where('club', '==', teamName).where('bestPosition', '==', 'GK').orderBy('overall', 'desc').limit(1).get()
-        let snapshotDefence = await db.collection("players").where('club', '==', teamName).where('bestPosition', 'in', this.defencePositions).orderBy('overall', 'desc').limit(formation[0]).get()
-        let snapshotMid = await db.collection("players").where('club', '==', teamName).where('bestPosition', 'in', this.midfielderPosition).orderBy('overall', 'desc').limit(formation[1]).get()
-        let snapshotAttack = await db.collection("players").where('club', '==', teamName).where('bestPosition', 'in', this.attackPositions).orderBy('overall', 'desc').limit(formation[2]).get()
+    async prepareTeam(teamName, teamType, formation = [4, 3, 3]){
+        console.log(teamName, teamType)
+        let snapshotGK = await db.collection("players").where(teamType, '==', teamName).where('bestPosition', '==', 'GK').orderBy('overall', 'desc').limit(1).get()
+        let snapshotDefence = await db.collection("players").where(teamType, '==', teamName).where('bestPosition', 'in', this.defencePositions).orderBy('overall', 'desc').limit(formation[0]).get()
+        let snapshotMid = await db.collection("players").where(teamType, '==', teamName).where('bestPosition', 'in', this.midfielderPosition).orderBy('overall', 'desc').limit(formation[1]).get()
+        let snapshotAttack = await db.collection("players").where(teamType, '==', teamName).where('bestPosition', 'in', this.attackPositions).orderBy('overall', 'desc').limit(formation[2]).get()
 
         //it consists of stats from midfielders and forwards players
         //positions: CM, AM, LM, RM, CF, S, SS
@@ -354,8 +363,14 @@ class GameClass{
         
         let teamInControl = "HOME"
 
-        const homeTeam = await this.prepareTeam(home, homeForm)
-        const awayTeam = await this.prepareTeam(away, awayForm)
+        let homeTeam, awayTeam
+        if(['Portugal', 'Argentina'].indexOf(home) != -1){
+            homeTeam = await this.prepareTeam(home, 'nationality', homeForm)
+            awayTeam = await this.prepareTeam(away, 'nationality', awayForm)
+        }else{
+            homeTeam = await this.prepareTeam(home, 'club', homeForm)
+            awayTeam = await this.prepareTeam(away, 'club', awayForm)
+        }
 
         
         this.events.push({code: this.eventTypes.KickOff, time: 1, player: ""})
@@ -469,26 +484,29 @@ class GameClass{
         // let demoEvents = [
         //     {code: this.eventTypes.KickOff, time: 1, player: ""},
         //     {code: this.eventTypes.HomeAttack, time: 3, player: ""},
-        //     {code: this.eventTypes.AwayDefenceCut, time: 4, player: ""},
+        //     {code: this.eventTypes.AwayMidfieldCut, time: 4, player: ""},
         //     {code: this.eventTypes.AwayAttack, time: 5, player: ""},
-        //     {code: this.eventTypes.AwayScores, time: 5, player: this.pickPlayer(awayTeam.attackPlayers)},
+        //     {code: this.eventTypes.HomeDefenceCut, time: 5, player: ""},
         //     {code: this.eventTypes.HomeAttack, time: 6, player: ""},
-        //     {code: this.eventTypes.AwayGKStop, time: 10, player: ""},
+        //     {code: this.eventTypes.AwayMidfieldCut, time: 10, player: ""},
         //     {code: this.eventTypes.AwayAttack, time: 11, player: ""},
-        //     {code: this.eventTypes.HomeDefenceCut, time: 14, player: ""},
-        //     {code: this.eventTypes.HomeAttack, time: 15, player: ""},
-        //     {code: this.eventTypes.HomeScores, time: 44, player: this.pickPlayer(homeTeam.attackPlayers)},
+        //     {code: this.eventTypes.HomeMidfieldCut, time: 14, player: ""},
+        //     {code: this.eventTypes.AwayGKStop, time: 15, player: ""},
+        //     {code: this.eventTypes.AwayAttack, time: 36, player: ""},
         //     {code: this.eventTypes.HalfTime, time: 45, player: ""},
-        //     {code: this.eventTypes.AwayAttack, time: 54, player: ""},
-        //     {code: this.eventTypes.HomeMidfieldCut, time: 54, player: ""},
-        //     {code: this.eventTypes.AwayAttack, time: 56, player: ""},
-        //     {code: this.eventTypes.HomeGKStop, time: 60, player: ""},
-        //     {code: this.eventTypes.HomeAttack, time: 65, player: ""},
-        //     {code: this.eventTypes.HomeScores, time: 68, player: this.pickPlayer(homeTeam.attackPlayers)},
-        //     {code: this.eventTypes.AwayAttack, time: 70, player: ""},
-        //     {code: this.eventTypes.HomeGKStop, time: 75, player: ""},
-        //     {code: this.eventTypes.HomeAttack, time: 80, player: ""},
-        //     {code: this.eventTypes.HomeScores, time: 88, player: this.pickPlayer(homeTeam.attackPlayers)},
+        //     {code: this.eventTypes.AwayAttack, time: 46, player: ""},
+        //     {code: this.eventTypes.AwayScores, time: 48, player: this.pickPlayer(awayTeam.attackPlayers)},
+        //     {code: this.eventTypes.HomeAttack, time: 54, player: ""},
+        //     {code: this.eventTypes.AwayDefenceCut, time: 56, player: ""},
+        //     {code: this.eventTypes.AwayAttack, time: 60, player: ""},
+        //     {code: this.eventTypes.HomeMidfieldCut, time: 65, player: ""},
+        //     {code: this.eventTypes.HomeAttack, time: 70, player: ""},
+        //     {code: this.eventTypes.HomeScores, time: 73, player: this.pickPlayer(homeTeam.attackPlayers)},
+        //     {code: this.eventTypes.AwayAttack, time: 75, player: ""},
+        //     {code: this.eventTypes.HomeMidfieldCut, time: 80, player: ""},
+        //     {code: this.eventTypes.HomeAttack, time: 81, player: ""},
+        //     {code: this.eventTypes.HomeScores, time: 85, player: this.pickPlayer(homeTeam.attackPlayers)},
+        //     {code: this.eventTypes.AwayAttack, time: 88, player: ""},
         //     {code: this.eventTypes.FullTime, time: 90, player: ""}
         // ]
 
